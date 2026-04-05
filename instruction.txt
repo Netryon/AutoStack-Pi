@@ -1,0 +1,279 @@
+You are building a full interactive installer for a Raspberry Pi 3B+ self-hosted stack.
+
+Your job is to create an installer that prepares and deploys the system in a controlled sequence.
+
+The installer must:
+1. Run step by step.
+2. Prompt the user for all variable values as needed while progressing.
+3. Create all directories, compose files, env files, scripts, and config files.
+4. Avoid hardcoding any value that may change in the future.
+5. Deploy services only after preparation is complete.
+6. Start containers one by one at the end.
+7. Verify each container is running successfully.
+8. Log important installer actions.
+9. Clean up old Docker images/logs over time to protect the 32 GB SD card.
+10. Harden the firewall at the end so that only SSH and intended service ports remain open.
+
+Important design rule:
+Do not just output static YAML and env files.
+Instead, create an INSTALLER that generates and fills those files interactively.
+
+The installer must ask me for values during execution, such as:
+- timezone
+- DuckDNS token
+- DuckDNS subdomains
+- Pi-hole admin password
+- Pi-hole upstream DNS servers
+- Heimdall timezone / uid / gid if needed
+- WG-Easy hostname/domain
+- WG-Easy admin credentials
+- WireGuard DNS setting
+- WireGuard subnet
+- watchtower schedule settings if configurable
+- SSH port if non-default
+- service ports if user wants custom ones
+
+Overall objective:
+Create a ready-to-run deployment system under:
+~/opt/deployment/
+
+Required directory structure:
+~/opt/deployment/
+├── compose/
+├── env/
+├── data/
+├── scripts/
+└── logs/
+
+For each app:
+- compose/<app-name>/<app-name>.yaml
+- env/<app-name>/<app-name>.env
+- data/<app-name>/
+
+Apps to prepare and deploy in this order:
+1. DuckDNS
+2. Heimdall
+3. Pi-hole
+4. WG-Easy
+5. Watchtower
+
+After that:
+6. create maintenance scripts
+7. configure weekly OS updates
+8. configure weekly container updates
+9. configure cleanup
+10. harden firewall
+11. deploy containers one by one
+12. verify each service
+
+Critical constraints:
+- Use Docker Compose
+- Use one compose YAML per app
+- Use one env file per app
+- Use placeholders only through env files
+- The YAML must reference env values and must not hardcode changeable values
+- Persistent data must go under ~/opt/deployment/data/<app-name>/
+- Do not start containers until the preparation phase is complete
+- After preparation is complete, deploy one container at a time
+- After each deployment, verify it is running
+- If verification fails, stop and report the problem clearly
+
+Version rule:
+- For each app, determine the latest stable image tag at implementation time
+- Verify the image tag from the official image source or official documentation
+- Do not guess image tags
+- Avoid using "latest" unless the official project explicitly recommends it
+- The chosen tag must be written into the generated YAML so the deployment is reproducible
+
+The installer must be interactive.
+
+Implementation phases:
+
+PHASE 1 - host preparation
+The installer must:
+1. update the Pi OS
+2. install Docker Engine
+3. install Docker Compose plugin
+4. configure Docker to start on boot
+5. configure Docker log rotation globally to prevent logs from filling the SD card
+6. create the deployment directory structure
+7. create a logs directory for installer and maintenance logs
+
+PHASE 2 - file generation
+For each app, in the required order, the installer must:
+1. create the compose/<app-name>/ directory
+2. create the env/<app-name>/ directory
+3. create the data/<app-name>/ directory
+4. ask the user for the values needed for that app
+5. write the <app-name>.env file
+6. write the <app-name>.yaml file
+7. do not deploy yet
+8. validate that required values were provided before moving on
+
+PHASE 3 - maintenance scripts
+The installer must create scripts under:
+~/opt/deployment/scripts/
+
+Required scripts:
+1. weekly OS update script
+2. Docker cleanup script
+3. optional deployment verification helper if useful
+4. firewall hardening script
+
+The weekly OS update script must:
+- run apt update
+- run apt full-upgrade or equivalent safe OS update command
+- remove obsolete packages
+- log output to ~/opt/deployment/logs/
+- be designed to run weekly at 4:00 AM
+
+The Docker cleanup script must:
+- remove unused images/containers/networks/build cache
+- not remove Docker volumes automatically
+- log output to ~/opt/deployment/logs/
+
+PHASE 4 - scheduling
+The installer must set up scheduled tasks so that:
+1. weekly OS update runs first at 4:00 AM
+2. Watchtower runs after the OS update
+3. Docker cleanup runs after updates
+4. all scheduled tasks log output
+
+Use a reliable scheduler available on Raspberry Pi OS.
+Cron is acceptable.
+
+PHASE 5 - deployment
+Only after all files and scripts are prepared:
+1. deploy DuckDNS
+2. verify DuckDNS is running
+3. deploy Heimdall
+4. verify Heimdall is running
+5. deploy Pi-hole
+6. verify Pi-hole is running
+7. deploy WG-Easy
+8. verify WG-Easy is running
+9. deploy Watchtower
+10. verify Watchtower is running
+
+Deployment rule:
+Each app must be deployed individually using its own compose file and env file.
+
+Verification rule:
+For each app, verify by checking at minimum:
+- Docker container is running
+- Docker compose reports healthy/running state if available
+- published port is listening where applicable
+
+If a service fails:
+- stop further deployment
+- print the failure clearly
+- point to the relevant log or docker logs command
+
+App-specific requirements:
+
+DuckDNS:
+- create compose/duckdns/duckdns.yaml
+- create env/duckdns/duckdns.env
+- create data/duckdns/
+- ask for DuckDNS token
+- ask for DuckDNS subdomains
+- ask for timezone
+- ask for uid/gid if needed
+- use env_file in compose
+- use restart policy unless-stopped
+
+Heimdall:
+- create compose/heimdall/heimdall.yaml
+- create env/heimdall/heimdall.env
+- create data/heimdall/
+- ask for timezone
+- ask for uid/gid if needed
+- ask for desired local dashboard port
+- use env_file in compose
+- use restart policy unless-stopped
+
+Pi-hole:
+- create compose/pihole/pihole.yaml
+- create env/pihole/pihole.env
+- create data/pihole/
+- ask for timezone
+- ask for admin password
+- ask for upstream DNS values
+- ask for desired DNS ports if configurable
+- ask for desired local admin ports
+- use modern FTLCONF_* env variables
+- use env_file in compose
+- use restart policy unless-stopped
+
+WG-Easy:
+- create compose/wg-easy/wg-easy.yaml
+- create env/wg-easy/wg-easy.env
+- create data/wg-easy/
+- ask for timezone
+- ask for public host/domain
+- ask for admin username/password
+- ask for WireGuard UDP port
+- ask for DNS for VPN clients
+- ask for VPN subnet
+- include required capabilities and sysctls
+- use env_file in compose
+- use restart policy unless-stopped
+
+Watchtower:
+- create compose/watchtower/watchtower.yaml
+- create env/watchtower/watchtower.env
+- create data/watchtower/ if needed for consistency
+- configure it to update all containers automatically once per week
+- configure cleanup of old images
+- make sure its schedule runs after the OS update schedule
+- use env_file in compose
+- use restart policy unless-stopped
+
+Firewall hardening requirements:
+At the end, create and run a firewall hardening step.
+It must:
+- allow SSH
+- allow only the intended service ports
+- deny unnecessary inbound access
+- account for Docker behavior correctly
+- not accidentally block deployed services
+- be safe for a Raspberry Pi remote system
+
+The firewall must leave open only:
+- SSH
+- DuckDNS does not need inbound service port
+- Heimdall chosen local port
+- Pi-hole DNS port(s)
+- Pi-hole local admin port(s)
+- WG-Easy UDP port
+- WG-Easy web port if intentionally exposed
+
+Installer implementation requirements:
+- Prefer Bash for the installer and maintenance scripts
+- Generated files must be readable and maintainable
+- Use clear comments in scripts
+- Validate required commands before continuing
+- Fail safely with useful error messages
+- Log meaningful actions to files under ~/opt/deployment/logs/
+- Prompt clearly and show defaults where appropriate
+- Ask before overwriting existing files
+- Support rerun/recovery if partially completed
+
+The agent must generate:
+1. the installer script
+2. all template logic for writing compose/env/config files
+3. all maintenance scripts
+4. the scheduled task setup
+5. the firewall hardening script
+6. a short README explaining how to run the installer
+
+Expected output from you:
+1. show the final installer script
+2. show any helper scripts it creates
+3. show examples of the generated YAML/env content templates
+4. show the cron or scheduling entries it will install
+5. show the verification logic
+6. show the README
+
+Do not simplify the task into a static file dump only.
+Build an actual interactive installer that asks for values during the process, writes the files, then deploys and verifies everything in order.
