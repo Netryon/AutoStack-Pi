@@ -1,0 +1,20 @@
+# Runtime secrets (never copy Pi /opt/deployment or .env files into this repo)
+.env
+.env.*
+!.env.example
+*.local.env
+
+# Installer state if ever copied back from a Pi
+.pi-homelab-installer.state
+
+# Logs
+*.log
+logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
